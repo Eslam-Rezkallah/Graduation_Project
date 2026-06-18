@@ -53,6 +53,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      ai-screenshot:
+        condition: service_started
+      ai-chat:
+        condition: service_started
+      ai-report:
+        condition: service_started
     ports:
       - "3000:3000"
     environment:
@@ -63,10 +69,49 @@ services:
       PORT: "3000"
       MOOD: PROD
       FRONTEND_URL: http://localhost:3000
+      AI_SCREENSHOT_SERVICE_URL: http://ai-screenshot:8001
+      AI_CHAT_SERVICE_URL: http://ai-chat:8002
+      AI_REPORT_SERVICE_URL: http://ai-report:8003
     # Everything else (secrets, LiveKit, Cloudinary, OpenAI…) is
     # provided via a local .env file at the repo root.
     env_file:
       - .env
+
+  ai-screenshot:
+    build:
+      context: ./ai-services
+      dockerfile: Dockerfile
+    container_name: rem-ai-screenshot
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+
+  ai-chat:
+    build:
+      context: ./ai-services
+      dockerfile: Dockerfile
+    container_name: rem-ai-chat
+    restart: unless-stopped
+    command: ["uvicorn", "chat_summarizer_api:app", "--host", "0.0.0.0", "--port", "8002"]
+    ports:
+      - "8002:8002"
+
+  ai-report:
+    build:
+      context: ./ai-services
+      dockerfile: Dockerfile
+    container_name: rem-ai-report
+    restart: unless-stopped
+    command: ["uvicorn", "report_intelligence_api:app", "--host", "0.0.0.0", "--port", "8003"]
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DB: REM
+      MONGO_COLLECTION: files
+    ports:
+      - "8003:8003"
 
 volumes:
   mongo-data:

@@ -80,16 +80,4 @@ router.get(
   sessionService.getMySessions
 );
 
-/**
- * GET /api/work-session/admin/sessions
- * Query: { orgId, userId, status?, taskId?, from?, to?, page?, limit? }
- * Org owner/admin only — lists ANOTHER member's sessions for monitoring.
- */
-router.get(
-  "/admin/sessions",
-  authentication(),
-  validation(validators.getUserSessions),
-  sessionService.getUserSessionsAdmin
-);
-
 export default router;

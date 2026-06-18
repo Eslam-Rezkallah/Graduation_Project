@@ -16,71 +16,12 @@ import {
   requireOrgMember,
   requireOrgAdmin,
 } from "../../utils/permissions/org.permissions.js";
+import { callAiService } from "../../utils/ai/ai.client.js";
 
 const router = Router();
 router.use(authentication());
 
 const id = joi.string().custom(isValidObjectId).required();
-
-// GET /work-session/admin/screenshots?orgId=&userId=&from=&to=&page=&limit=
-// Org owner/admin views a specific member's screenshots across all their
-// sessions (the monitoring deep-dive). Registered BEFORE /:sessionId/...
-// so the literal "admin" segment isn't swallowed by the :sessionId param.
-const adminListSchema = joi
-  .object({
-    orgId: id,
-    userId: id,
-    from: joi.date().iso(),
-    to: joi.date().iso(),
-    page: joi.number().integer().min(1).default(1),
-    limit: joi.number().integer().min(1).max(100).default(50),
-  })
-  .required();
-
-router.get(
-  "/admin/screenshots",
-  validation(adminListSchema),
-  asyncHandler(async (req, res) => {
-    const { orgId, userId } = req.query;
-    await requireOrgAdmin(orgId, req.user._id);
-
-    // Resolve the member's sessions first (screenshots only carry a
-    // `session` ref, not a denormalized userId/orgId).
-    const sessions = await workSessionModel
-      .find({ organizationId: orgId, userId })
-      .select("_id")
-      .lean();
-    const sessionIds = sessions.map((s) => s._id);
-    if (sessionIds.length === 0) {
-      return successResponse({
-        res,
-        data: { items: [], total: 0, page: 1, limit: Number(req.query.limit) || 50 },
-      });
-    }
-
-    const { from, to } = req.query;
-    const page = Number(req.query.page) || 1;
-    const limit = Number(req.query.limit) || 50;
-    const filter = { session: { $in: sessionIds } };
-    if (from || to) {
-      filter.capturedAt = {};
-      if (from) filter.capturedAt.$gte = new Date(from);
-      if (to) filter.capturedAt.$lte = new Date(to);
-    }
-
-    const [items, total] = await Promise.all([
-      screenshotModel
-        .find(filter)
-        .sort({ capturedAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .lean(),
-      screenshotModel.countDocuments(filter),
-    ]);
-
-    return successResponse({ res, data: { items, total, page, limit } });
-  }),
-);
 
 // POST /work-session/:sessionId/screenshots
 // Body: { imageUrl, capturedAt }
@@ -185,6 +126,44 @@ router.delete(
     }
     await shot.deleteOne();
     return successResponse({ res, message: "Screenshot deleted" });
+  }),
+);
+
+router.post(
+  "/screenshots/:screenshotId/analyze",
+  asyncHandler(async (req, res) => {
+    const shot = await screenshotModel.findById(req.params.screenshotId);
+    if (!shot) throw httpError(404, "Screenshot not found");
+    const session = await workSessionModel.findById(shot.session);
+    if (!session) throw httpError(404, "Parent session not found");
+
+    const isSelf = session.userId.toString() === req.user._id.toString();
+    if (!isSelf) {
+      await requireOrgAdmin(session.organizationId, req.user._id);
+    } else {
+      await requireOrgMember(session.organizationId, req.user._id);
+    }
+
+    const analysis = await callAiService(
+      "screenshot",
+      "POST",
+      "/analyze-screenshot",
+      {
+        data: {
+          image_url: shot.imageUrl,
+          user_id: String(session.userId),
+          captured_at: shot.capturedAt?.toISOString(),
+        },
+      },
+    );
+
+    return successResponse({
+      res,
+      data: {
+        screenshotId: shot._id,
+        analysis,
+      },
+    });
   }),
 );
 

@@ -63,6 +63,22 @@ const envSchema = joi
     // AI (optional)
     OPENAI_API_KEY: joi.string().allow("").optional(),
     OPENAI_MODEL: joi.string().default("gpt-4o-mini"),
+    AI_SCREENSHOT_SERVICE_URL: joi
+      .string()
+      .uri({ scheme: ["http", "https"] })
+      .allow("")
+      .optional(),
+    AI_CHAT_SERVICE_URL: joi
+      .string()
+      .uri({ scheme: ["http", "https"] })
+      .allow("")
+      .optional(),
+    AI_REPORT_SERVICE_URL: joi
+      .string()
+      .uri({ scheme: ["http", "https"] })
+      .allow("")
+      .optional(),
+    AI_SERVICE_TIMEOUT_MS: joi.number().integer().min(1000).default(30000),
 
     // LiveKit (Voice/Video SFU) — optional; if any of the three
     // is missing the call module will refuse to mint tokens and

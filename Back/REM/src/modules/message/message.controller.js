@@ -44,6 +44,12 @@ router.get(
   messageService.searchMessages,
 );
 
+router.post(
+  "/ai/summarize",
+  validation(validators.summarizeMessages),
+  messageService.summarizeMessages,
+);
+
 // ── Pinned messages (static path — must come BEFORE /:messageId) ──
 // GET /chat/rooms/:roomId/messages/pinned
 router.get(

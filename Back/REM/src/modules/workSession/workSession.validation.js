@@ -64,17 +64,3 @@ export const getMySessions = joi
     limit:     joi.number().integer().min(1).max(100).default(20),
   })
   .required();
-
-/* ── GET /work-session/admin/sessions (org admin views a member) ── */
-export const getUserSessions = joi
-  .object({
-    orgId:     generalFields.id.required(),
-    userId:    generalFields.id.required(),
-    status:    joi.string().valid("active", "paused", "stopped"),
-    taskId:    generalFields.id,
-    from:      joi.date().iso(),
-    to:        joi.date().iso().min(joi.ref("from")),
-    page:      joi.number().integer().min(1).default(1),
-    limit:     joi.number().integer().min(1).max(100).default(20),
-  })
-  .required();

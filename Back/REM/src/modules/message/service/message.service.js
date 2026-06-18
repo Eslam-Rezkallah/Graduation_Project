@@ -14,6 +14,8 @@ import { asyncHandler } from "../../../utils/response/error.response.js";
 import { successResponse } from "../../../utils/response/success.response.js";
 import { getPagination } from "../../../utils/db/pagination.js";
 import { getChatNamespace } from "../../socket/socket.controller.js";
+import { httpError } from "../../../utils/errors/index.js";
+import { callAiService } from "../../../utils/ai/ai.client.js";
 
 // ── Shared service ────────────────────────────────────────────
 import {
@@ -25,7 +27,7 @@ import {
   markMessagesSeen,
   forwardMessage,
 } from "./shared.message.service.js";
-import { invalidate, ckey, cached } from "../../../utils/cache/cache.service.js";
+import { cached, invalidate, ckey } from "../../../utils/cache/cache.service.js";
 
 // ─────────────────────────────────────────────────────────────
 // SOCKET HELPER
@@ -250,6 +252,83 @@ export const searchMessages = asyncHandler(async (req, res, next) => {
 // ─────────────────────────────────────────────────────────────
 // GET /chat/rooms/unread-counts
 // ─────────────────────────────────────────────────────────────
+
+export const summarizeMessages = asyncHandler(async (req, res) => {
+  const { roomId } = req.params;
+  const userId = req.user._id;
+  const {
+    window,
+    limit = 100,
+    maxSummaryLength = 150,
+    minSummaryLength = 30,
+    includeVoiceAnalysis = true,
+    includeImageOcr = true,
+  } = req.body;
+
+  await requireRoomMember(roomId, userId);
+
+  const room = await chatRoomModel.findById(roomId).select("name type").lean();
+  const channel = room?.name || String(roomId);
+
+  const messages = await messageModel
+    .find({
+      chatRoomId: roomId,
+      deletedForEveryone: false,
+      deletedFor: { $ne: userId },
+    })
+    .populate("senderId", "username email")
+    .sort({ createdAt: -1 })
+    .limit(Number(limit))
+    .lean();
+
+  if (!messages.length) {
+    throw httpError(404, "No messages found to summarize");
+  }
+
+  const aiMessages = messages
+    .reverse()
+    .map((message) => {
+      const image = message.attachments?.find((item) => item.type === "image");
+      const voice = message.attachments?.find((item) => item.type === "voice");
+      return {
+        channel,
+        ts: message.createdAt?.toISOString?.() || message.createdAt,
+        user:
+          message.senderId?.username ||
+          message.senderId?.email ||
+          String(message.senderId),
+        text: message.content || "",
+        image_url: image?.url || "",
+        audio_url: voice?.url || "",
+      };
+    })
+    .filter((message) => message.text || message.image_url || message.audio_url);
+
+  if (!aiMessages.length) {
+    throw httpError(400, "No text, image, or voice content found to summarize");
+  }
+
+  const summary = await callAiService("chat", "POST", "/summarize", {
+    data: {
+      messages: aiMessages,
+      channel,
+      window,
+      max_summary_length: maxSummaryLength,
+      min_summary_length: minSummaryLength,
+      include_voice_analysis: includeVoiceAnalysis,
+      include_image_ocr: includeImageOcr,
+    },
+  });
+
+  return successResponse({
+    res,
+    data: {
+      roomId,
+      messageCount: aiMessages.length,
+      summary,
+    },
+  });
+});
 
 export const getUnreadCounts = asyncHandler(async (req, res) => {
   const userId = req.user._id;

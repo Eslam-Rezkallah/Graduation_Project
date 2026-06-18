@@ -9,11 +9,7 @@
 
 # ─── Secrets, keys, credentials ────────────────────────────
 # Defensive catch-all in case someone drops creds into the tree.
-# NOTE: only ignore a top-level runtime `secrets/` folder — do NOT swallow
-# the source module at src/utils/secrets/ (it holds loader logic, no values).
-/secrets/
-!src/utils/secrets/
-!src/utils/secrets/**
+secrets/
 *.pem
 *.key
 *.p12
@@ -80,12 +76,20 @@ docker/data/
 *.bak
 .eslintcache
 node_modules
-node_modules
+
 FE/
 FE_Angular/
 .claude/FE/
-FE_Angular/
-ai-services/
+
+
 .claude/
 src/uploads/*
 !src/uploads/.gitkeep
+
+
+# HuggingFace / AI Models Cache
+.hf-cache/
+.cache/
+*.metadata
+*.incomplete
+*.lock

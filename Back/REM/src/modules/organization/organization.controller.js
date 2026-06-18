@@ -21,12 +21,6 @@ const router = Router();
 // ORG CRUD
 // ─────────────────────────────────────────────────────────────
 
-// GET /org/me  — all orgs the logged-in user belongs to
-// NOTE: must be registered BEFORE "/:orgId", otherwise Express matches the
-// param route first and tries to validate orgId="me" → 400. This shadowing
-// silently broke org/role resolution on login (caught + swallowed by the FE).
-router.get("/me", authentication(), orgService.getMyOrganizations);
-
 // GET /org/:orgId  — get org details + member count + current user role
 router.get(
   "/:orgId",
@@ -34,6 +28,9 @@ router.get(
   validation(validators.orgIdParam),
   orgService.getOrg
 );
+
+// GET /org/me  — all orgs the logged-in user belongs to
+router.get("/me", authentication(), orgService.getMyOrganizations);
 
 
 // POST /org  — create a new org

@@ -36,10 +36,7 @@ import {
   updateSession,
 } from "../../../utils/cache/session.store.js";
 import { IDLE_THRESHOLD_SEC } from "../../../utils/jobs/idle.detection.job.js";
-import {
-  requireOrgMember,
-  requireOrgAdmin,
-} from "../../../utils/permissions/org.permissions.js";
+import { requireOrgMember } from "../../../utils/permissions/org.permissions.js";
 import { httpError } from "../../../utils/errors/index.js";
 
 /* ═══════════════════════════════════════════════════════════
@@ -382,57 +379,6 @@ export const getMySessions = asyncHandler(async (req, res, next) => {
     res,
     data: { page, limit, total, items: enriched },
   });
-});
-
-/* ── GET /work-session/admin/sessions ─────────────────────────
-   Admin/owner view of ANOTHER user's sessions in their org. This is
-   the monitoring counterpart to getMySessions — without it a manager
-   cannot see an employee's work sessions at all. */
-export const getUserSessionsAdmin = asyncHandler(async (req, res, next) => {
-  const { orgId, userId, status, taskId, from, to } = req.query;
-
-  // Only org owner/admin may inspect another member's sessions.
-  await requireOrgAdmin(orgId, req.user._id);
-
-  const { page, limit, skip } = getPagination(req.query);
-
-  const filter = { userId, organizationId: orgId };
-  if (status) filter.status = status;
-  if (taskId) filter.taskId = taskId;
-  if (from || to) {
-    filter.startTime = {};
-    if (from) filter.startTime.$gte = new Date(from);
-    if (to) filter.startTime.$lte = new Date(to);
-  }
-
-  const [items, total] = await Promise.all([
-    workSessionModel
-      .find(filter)
-      .select(
-        "status taskId startTime endTime activeSeconds idleSeconds pausedSeconds " +
-        "lastActivityAt isIdle note createdAt updatedAt"
-      )
-      .populate("taskId", "title status priority")
-      .sort({ startTime: -1 })
-      .skip(skip)
-      .limit(limit)
-      .lean(),
-    workSessionModel.countDocuments(filter),
-  ]);
-
-  const enriched = await Promise.all(items.map(async (s) => {
-    if (s.status !== SESSION_STATUS.ACTIVE) return s;
-    const cached = await getSession(s._id);
-    if (!cached) return s;
-    return {
-      ...s,
-      lastActivityAt: new Date(cached.lastActivityAt),
-      isIdle: cached.isIdle,
-      liveSeconds: Math.floor((Date.now() - new Date(s.startTime)) / 1000),
-    };
-  }));
-
-  return successResponse({ res, data: { page, limit, total, items: enriched } });
 });
 
 /* ═══════════════════════════════════════════════════════════

@@ -114,16 +114,5 @@ export const verifyToken = ({
   token,
   signature = config.security.userAccessSecret,
 } = {}) => {
-  try {
-    return jwt.verify(token, signature);
-  } catch (err) {
-    // jwt.verify throws TokenExpiredError / JsonWebTokenError / NotBeforeError.
-    // These are auth failures (401), not server errors (500) — the FE auth
-    // interceptor relies on a 401 to clear the session and redirect to login.
-    throw new UnauthorizedError(
-      err.name === "TokenExpiredError"
-        ? "Token expired. Please log in again."
-        : "Invalid token",
-    );
-  }
+  return jwt.verify(token, signature);
 };

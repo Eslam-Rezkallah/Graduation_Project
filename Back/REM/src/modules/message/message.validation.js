@@ -80,6 +80,18 @@ export const searchMessages = joi
   })
   .required();
 
+export const summarizeMessages = joi
+  .object({
+    roomId: id.label("roomId"),
+    window: joi.string().valid("day", "week"),
+    limit: joi.number().integer().min(1).max(500).default(100),
+    maxSummaryLength: joi.number().integer().min(20).max(400).default(150),
+    minSummaryLength: joi.number().integer().min(5).max(200).default(30),
+    includeVoiceAnalysis: joi.boolean().default(true),
+    includeImageOcr: joi.boolean().default(true),
+  })
+  .required();
+
 // ── Pin / Unpin / List pinned ────────────────────────────────
 export const pinParams = joi
   .object({

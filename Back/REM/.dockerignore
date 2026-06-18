@@ -45,6 +45,8 @@ docs
 
 # Python AI services (separate container if/when used)
 ai-services
+!ai-services/
+!ai-services/*.js
 
 # Other
 *.bak

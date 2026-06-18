@@ -104,20 +104,13 @@ export const joinOrganizationController = asyncHandler(
 
     const result = await joinOrganization({ email, password, joinCode });
 
-    // Never echo the org's joinCode back to a freshly-joined member — it
-    // is admin/owner-only state (getOrg strips it for non-admins too).
-    const orgObj = result.organization?.toObject
-      ? result.organization.toObject()
-      : { ...result.organization };
-    delete orgObj.joinCode;
-
-    return successResponse(
-      {
-        res,
-        message: result.message || "Successfully joined organization",
-        data: { ...result, organization: orgObj },
-      },
-      201,
-    );
+return successResponse(
+  {
+    res,
+    message: result.message || "Successfully joined organization",
+    data: result,
+  },
+  201,
+);
   },
 );

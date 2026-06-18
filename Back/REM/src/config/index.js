@@ -41,6 +41,10 @@ export const config = Object.freeze({
   ai: {
     openaiApiKey: env.OPENAI_API_KEY,
     openaiModel: env.OPENAI_MODEL,
+    screenshotServiceUrl: env.AI_SCREENSHOT_SERVICE_URL || null,
+    chatServiceUrl: env.AI_CHAT_SERVICE_URL || null,
+    reportServiceUrl: env.AI_REPORT_SERVICE_URL || null,
+    serviceTimeoutMs: env.AI_SERVICE_TIMEOUT_MS,
   },
   // Redis (Phase 2)
   redis: {

@@ -73,20 +73,12 @@ export const getMyOrganizations = asyncHandler(async (req, res, next) => {
   }) 
   const organizations = memberships
     .filter((m) => m.organizationId)
-    .map((m) => {
-      // organizationId is a populated Mongoose document — spreading it
-      // directly does NOT copy its fields (they live on _doc), which left
-      // _id/name/slug undefined and silently broke org + role resolution
-      // on the client. Convert to a plain object first.
-      const org = m.organizationId.toObject
-        ? m.organizationId.toObject()
-        : m.organizationId;
-      return {
-        ...org,
-        memberRole: m.role,
-        joinedAt: m.joinedAt,
-      };
-    });
+    .map((m) => ({
+      ...m.organizationId,
+      memberRole: m.role,
+      joinedAt: m.joinedAt,
+    
+    }));
 
   return successResponse({ res, data: { organizations } });
 });
@@ -411,7 +403,7 @@ export const getWorkSessionsSummary = asyncHandler(async (req, res, next) => {
         pipeline: [{ $project: { username: 1, email: 1, image: 1 } }],
       },
     },
-    { $unwind: { path: "$user", preserveNullAndEmptyArrays: false } },
+    { $unwind: { path: "$user", preserveNullAndEmpty: false } },
     {
       $project: {
         _id: 0,

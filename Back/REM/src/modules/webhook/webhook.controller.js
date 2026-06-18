@@ -20,16 +20,9 @@ import { successResponse } from "../../utils/response/success.response.js";
 import { httpError } from "../../utils/errors/index.js";
 import { requireOrgAdmin } from "../../utils/permissions/org.permissions.js";
 import webhookSubscriptionModel from "../../DB/Model/webhookSubscription.model.js";
-import webhookDeliveryModel, {
-  deliveryStatus,
-} from "../../DB/Model/webhookDelivery.model.js";
 import { generateWebhookSecret } from "../../utils/webhooks/webhook.service.js";
-import mongoose from "mongoose";
 
-// mergeParams: true → inherits :orgId from the parent org router mount
-// (/org/:orgId/webhooks). Without it req.params.orgId is undefined and
-// every orgId-validated route 400s.
-const router = Router({ mergeParams: true });
+const router = Router();
 router.use(authentication());
 
 // Whitelist of event names a subscription is allowed to opt into.
@@ -87,18 +80,6 @@ const idSchema = joi
 
 const listSchema = joi
   .object({ orgId: generalFields.id.required() })
-  .required();
-
-// GET /org/:orgId/webhooks/deliveries — per-event delivery log.
-// page/limit are query params; status + subscriptionId filter the feed.
-const deliveriesSchema = joi
-  .object({
-    orgId: generalFields.id.required(),
-    page: joi.number().integer().min(1).default(1),
-    limit: joi.number().integer().min(1).max(100).default(20),
-    status: joi.string().valid(...Object.values(deliveryStatus)),
-    subscriptionId: generalFields.id,
-  })
   .required();
 
 // POST /org/:orgId/webhooks
@@ -160,59 +141,6 @@ router.get(
   }),
 );
 
-// GET /org/:orgId/webhooks/deliveries
-// Declared BEFORE /:id routes for clarity (no GET /:id exists, so there's
-// no real collision, but keeping read routes grouped reads better).
-router.get(
-  "/deliveries",
-  validation(deliveriesSchema),
-  asyncHandler(async (req, res) => {
-    const { orgId } = req.params;
-    await requireOrgAdmin(orgId, req.user._id);
-
-    const page = Number(req.query.page) || 1;
-    const limit = Number(req.query.limit) || 20;
-
-    const filter = { organizationId: orgId };
-    if (req.query.status) filter.status = req.query.status;
-    if (req.query.subscriptionId)
-      filter.subscriptionId = req.query.subscriptionId;
-
-    const [items, total, counts] = await Promise.all([
-      webhookDeliveryModel
-        .find(filter)
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .populate("subscriptionId", "name targetUrl isActive")
-        .lean(),
-      webhookDeliveryModel.countDocuments(filter),
-      // statusCounts is always org-wide (ignores the status filter) so the
-      // tabs show totals, not "delivered within delivered".
-      webhookDeliveryModel.aggregate([
-        { $match: { organizationId: new mongoose.Types.ObjectId(orgId) } },
-        { $group: { _id: "$status", n: { $sum: 1 } } },
-      ]),
-    ]);
-
-    const statusCounts = { pending: 0, delivered: 0, failed: 0, dead: 0 };
-    for (const c of counts) {
-      if (c._id in statusCounts) statusCounts[c._id] = c.n;
-    }
-
-    return successResponse({
-      res,
-      data: {
-        items,
-        total,
-        page,
-        pages: Math.ceil(total / limit) || 1,
-        statusCounts,
-      },
-    });
-  }),
-);
-
 // PATCH /org/:orgId/webhooks/:id
 router.patch(
   "/:id",
@@ -258,45 +186,6 @@ router.delete(
     });
     if (r.deletedCount === 0) throw httpError(404, "Webhook not found");
     return successResponse({ res, message: "Webhook removed" });
-  }),
-);
-
-// POST /org/:orgId/webhooks/:id/test
-// Enqueue a one-off "webhook.test" delivery for THIS subscription only
-// (ignores its event filter) so an admin can verify the endpoint + secret
-// without waiting for a real event. The existing delivery worker picks it
-// up on its next tick and signs/POSTs it like any other delivery.
-router.post(
-  "/:id/test",
-  validation(idSchema),
-  asyncHandler(async (req, res) => {
-    const { orgId, id } = req.params;
-    await requireOrgAdmin(orgId, req.user._id);
-
-    const sub = await webhookSubscriptionModel
-      .findOne({ _id: id, organizationId: orgId })
-      .lean();
-    if (!sub) throw httpError(404, "Webhook not found");
-
-    const delivery = await webhookDeliveryModel.create({
-      subscriptionId: sub._id,
-      organizationId: orgId,
-      event: "webhook.test",
-      payload: {
-        event: "webhook.test",
-        organizationId: String(orgId),
-        timestamp: new Date().toISOString(),
-        data: { message: "This is a test event from REM.", triggeredBy: String(req.user._id) },
-      },
-      status: deliveryStatus.Pending,
-      nextAttemptAt: new Date(),
-    });
-
-    return successResponse({
-      res,
-      message: "Test event queued. Check the deliveries log for the result.",
-      data: { deliveryId: delivery._id, status: delivery.status },
-    });
   }),
 );
 

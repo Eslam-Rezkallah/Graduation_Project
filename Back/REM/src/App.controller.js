@@ -2,6 +2,8 @@
 import authController from "./modules/auth/auth.controller.js";
 import userController from "./modules/user/user.controller.js";
 import organizationController from "./modules/organization/organization.controller.js";
+import aiController from "./modules/ai/ai.controller.js";
+import spaceController from "./modules/space/space.controller.js";
 import sprintStatusController from "./modules/sprint/sprint.status.controller.js";
 import meController from "./modules/me/me.controller.js";
 import starController from "./modules/star/star.controller.js";
@@ -21,9 +23,7 @@ import meetingController from "./modules/meeting/meeting.controller.js";
 import channelTabController from "./modules/chatroom/channel-tab.controller.js";
 import screenshotController from "./modules/workSession/screenshot.controller.js";
 import activityEventController from "./modules/workSession/activity-event.controller.js";
-import workforceAnalyticsController from "./modules/workSession/analytics.controller.js";
 import dashboardController from "./modules/dashboard/dashboard.controller.js";
-import auditController from "./modules/audit/audit.controller.js";
 import { config } from "./config/index.js";
 import { generalLimiter, authLimiter } from "./utils/rate-limit/limiters.js";
 import connectDB from "./DB/connection.js";
@@ -197,6 +197,8 @@ const bootstrap = async (app, express) => {
   mountVersioned("/auth", authController);
   mountVersioned("/user", userController);
   mountVersioned("/org", organizationController);
+  mountVersioned("/ai", aiController);
+  mountVersioned("/org/:orgId/spaces", spaceController);
 
   // ── Project module is DEPRECATED ────────────────────────────
   // The FE has migrated to Spaces; tasks live under spaces, not
@@ -241,9 +243,7 @@ const bootstrap = async (app, express) => {
   // screenshots and activity events sit naturally under their parent.
   mountVersioned("/work-session", screenshotController);
   mountVersioned("/work-session", activityEventController);
-  mountVersioned("/work-session", workforceAnalyticsController);
   mountVersioned("/dashboards", dashboardController);
-  mountVersioned("/audit-logs", auditController);
 
   // ─── Chat ───────────────────────────────────────────────────
   mountVersioned("/chat/rooms", chatRoomController);
