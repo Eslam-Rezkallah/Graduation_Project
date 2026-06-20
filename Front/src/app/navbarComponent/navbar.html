@@ -10,6 +10,55 @@
       </svg>
     </div>
     <span class="brand-name text-base font-bold tracking-tight hidden sm:block">REM</span>
+
+    <!-- ── Organization switcher ── -->
+    <div class="relative hidden sm:block ml-1">
+      <button
+        class="flex items-center gap-2 px-2.5 py-1.5 rounded-xl hover:bg-gray-50 transition"
+        (click)="toggleOrgMenu()"
+        [attr.aria-expanded]="orgMenuOpen()"
+        aria-haspopup="true">
+        <span class="h-6 w-6 rounded-lg bg-indigo-500 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">
+          {{ currentOrgName().charAt(0).toUpperCase() }}
+        </span>
+        <span class="user-name text-sm font-semibold max-w-[160px] truncate">{{ currentOrgName() }}</span>
+        <svg class="h-3.5 w-3.5 text-gray-400 transition-transform duration-200"
+             [class.rotate-180]="orgMenuOpen()"
+             fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="m19 9-7 7-7-7"/>
+        </svg>
+      </button>
+
+      @if (orgMenuOpen()) {
+        <div class="dropdown-panel absolute left-0 mt-2 w-64 rounded-2xl shadow-xl border z-50" role="menu">
+          <div class="dropdown-header px-4 py-2.5 border-b">
+            <p class="item-sub text-xs font-semibold uppercase tracking-wide">Your organizations</p>
+          </div>
+          <div class="py-1.5 max-h-72 overflow-y-auto">
+            @for (org of orgs(); track org._id) {
+              <button (click)="switchOrg(org)"
+                class="dropdown-item w-full flex items-center gap-3 px-4 py-2.5 text-left" role="menuitem">
+                <span class="h-8 w-8 rounded-lg bg-indigo-500 text-white flex items-center justify-center text-sm font-bold flex-shrink-0">
+                  {{ (org.name || '?').charAt(0).toUpperCase() }}
+                </span>
+                <div class="min-w-0 flex-1">
+                  <p class="item-label text-sm font-medium truncate">{{ org.name }}</p>
+                  <p class="item-sub text-xs capitalize">{{ org.memberRole }}</p>
+                </div>
+                @if (org._id === user()?.orgId) {
+                  <svg class="h-4 w-4 text-indigo-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/>
+                  </svg>
+                }
+              </button>
+            }
+            @if (orgs().length === 0) {
+              <p class="item-sub px-4 py-3 text-xs">No organizations.</p>
+            }
+          </div>
+        </div>
+      }
+    </div>
   </div>
 
   <!-- Right side -->

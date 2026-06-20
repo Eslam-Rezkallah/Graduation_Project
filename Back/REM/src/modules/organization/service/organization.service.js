@@ -74,10 +74,14 @@ export const getMyOrganizations = asyncHandler(async (req, res, next) => {
   const organizations = memberships
     .filter((m) => m.organizationId)
     .map((m) => ({
-      ...m.organizationId,
+      // organizationId is a populated Mongoose document — spreading it
+      // directly copies internal props ($__, _doc, …) and buries the real
+      // fields (_id, name) inside _doc, so the FE reads org._id as
+      // undefined and bounces the user to onboarding. toObject() flattens
+      // it to a plain { _id, name, slug, logo, ownerId, createdAt } first.
+      ...m.organizationId.toObject(),
       memberRole: m.role,
       joinedAt: m.joinedAt,
-    
     }));
 
   return successResponse({ res, data: { organizations } });

@@ -6,6 +6,8 @@
  *   PATCH  /org/:orgId/webhooks/:id           update (name/url/events/isActive)
  *   DELETE /org/:orgId/webhooks/:id           remove
  *   POST   /org/:orgId/webhooks/:id/rotate    rotate the signing secret
+ *   POST   /org/:orgId/webhooks/:id/test      queue a synthetic test delivery
+ *   GET    /org/:orgId/webhooks/deliveries    delivery log (+ status counts)
  *
  * All endpoints require org owner/admin — webhooks expose org data
  * to external URLs, so plain members shouldn't be able to create them.
@@ -20,9 +22,19 @@ import { successResponse } from "../../utils/response/success.response.js";
 import { httpError } from "../../utils/errors/index.js";
 import { requireOrgAdmin } from "../../utils/permissions/org.permissions.js";
 import webhookSubscriptionModel from "../../DB/Model/webhookSubscription.model.js";
+import webhookDeliveryModel, {
+  deliveryStatus,
+} from "../../DB/Model/webhookDelivery.model.js";
 import { generateWebhookSecret } from "../../utils/webhooks/webhook.service.js";
+import mongoose from "mongoose";
 
-const router = Router();
+const { Types } = mongoose;
+
+// mergeParams:true is REQUIRED — this router is mounted under
+// "/org/:orgId/webhooks", so without it req.params.orgId is undefined
+// inside every route and the orgId-required validation 400s with
+// "Validation error" (which is exactly what broke the Webhooks page).
+const router = Router({ mergeParams: true });
 router.use(authentication());
 
 // Whitelist of event names a subscription is allowed to opt into.
@@ -82,6 +94,16 @@ const listSchema = joi
   .object({ orgId: generalFields.id.required() })
   .required();
 
+const deliveriesSchema = joi
+  .object({
+    orgId: generalFields.id.required(),
+    status: joi.string().valid(...Object.values(deliveryStatus)),
+    subscriptionId: generalFields.id,
+    page: joi.number().integer().min(1).default(1),
+    limit: joi.number().integer().min(1).max(100).default(20),
+  })
+  .required();
+
 // POST /org/:orgId/webhooks
 router.post(
   "/",
@@ -138,6 +160,66 @@ router.get(
       .lean();
 
     return successResponse({ res, data: { count: items.length, items } });
+  }),
+);
+
+// GET /org/:orgId/webhooks/deliveries  — delivery log for the org.
+// Registered BEFORE the "/:id" routes so the static "/deliveries"
+// segment can never be parsed as a webhook id.
+router.get(
+  "/deliveries",
+  validation(deliveriesSchema),
+  asyncHandler(async (req, res) => {
+    const { orgId } = req.params;
+    await requireOrgAdmin(orgId, req.user._id);
+
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    const filter = { organizationId: orgId };
+    if (req.query.status) filter.status = req.query.status;
+    if (req.query.subscriptionId)
+      filter.subscriptionId = req.query.subscriptionId;
+
+    // statusCounts drive the tab badges, so they ignore the active
+    // status filter but still respect a chosen subscription. aggregate()
+    // does NOT auto-cast strings to ObjectId, so cast explicitly.
+    const countsMatch = { organizationId: new Types.ObjectId(orgId) };
+    if (req.query.subscriptionId)
+      countsMatch.subscriptionId = new Types.ObjectId(req.query.subscriptionId);
+
+    const [items, total, countsAgg] = await Promise.all([
+      webhookDeliveryModel
+        .find(filter)
+        .populate("subscriptionId", "name targetUrl isActive")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      webhookDeliveryModel.countDocuments(filter),
+      webhookDeliveryModel.aggregate([
+        { $match: countsMatch },
+        { $group: { _id: "$status", n: { $sum: 1 } } },
+      ]),
+    ]);
+
+    const statusCounts = { pending: 0, delivered: 0, failed: 0, dead: 0 };
+    for (const row of countsAgg) {
+      if (row._id in statusCounts) statusCounts[row._id] = row.n;
+    }
+
+    return successResponse({
+      res,
+      data: {
+        items,
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit) || 1,
+        statusCounts,
+      },
+    });
   }),
 );
 
@@ -209,6 +291,49 @@ router.post(
       res,
       message: "Secret rotated. Old secret is no longer valid.",
       data: { _id: updated._id, secret },
+    });
+  }),
+);
+
+// POST /org/:orgId/webhooks/:id/test
+// Queues a synthetic "webhook.test" delivery for THIS subscription
+// (ignoring its event whitelist) so the user can confirm their endpoint
+// is reachable. The normal delivery worker picks it up on its next tick,
+// so the result shows up in the Deliveries tab with a real status code.
+router.post(
+  "/:id/test",
+  validation(idSchema),
+  asyncHandler(async (req, res) => {
+    const { orgId, id } = req.params;
+    await requireOrgAdmin(orgId, req.user._id);
+
+    const sub = await webhookSubscriptionModel.findOne({
+      _id: id,
+      organizationId: orgId,
+    });
+    if (!sub) throw httpError(404, "Webhook not found");
+
+    const delivery = await webhookDeliveryModel.create({
+      subscriptionId: sub._id,
+      organizationId: orgId,
+      event: "webhook.test",
+      payload: {
+        event: "webhook.test",
+        organizationId: String(orgId),
+        timestamp: new Date().toISOString(),
+        data: {
+          message: "This is a test delivery from REM.",
+          triggeredBy: String(req.user._id),
+        },
+      },
+      status: deliveryStatus.Pending,
+      nextAttemptAt: new Date(),
+    });
+
+    return successResponse({
+      res,
+      message: "Test event queued. Check the Deliveries tab for the result.",
+      data: { deliveryId: delivery._id },
     });
   }),
 );

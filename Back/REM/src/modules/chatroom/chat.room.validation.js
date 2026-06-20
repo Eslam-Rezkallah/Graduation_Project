@@ -89,6 +89,18 @@ export const listChatRooms = joi
   .required();
 
 // ─────────────────────────────────────────────────────────────
+// GET /chat/rooms/browse — discover joinable public channels
+// ─────────────────────────────────────────────────────────────
+export const browseChannels = joi
+  .object({
+    organizationId: id.label("organizationId"),
+    search: joi.string().trim().max(100).allow(""),
+    page: joi.number().integer().min(1).default(1),
+    limit: joi.number().integer().min(1).max(50).default(30),
+  })
+  .required();
+
+// ─────────────────────────────────────────────────────────────
 // GET /chat/rooms/:roomId
 // ─────────────────────────────────────────────────────────────
 export const roomParam = joi

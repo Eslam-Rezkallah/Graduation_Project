@@ -114,5 +114,17 @@ export const verifyToken = ({
   token,
   signature = config.security.userAccessSecret,
 } = {}) => {
-  return jwt.verify(token, signature);
+  try {
+    return jwt.verify(token, signature);
+  } catch (err) {
+    // A malformed / wrong-signature / expired token is a CLIENT error
+    // (401) — NOT a server error (500). Without this, a stale token (e.g.
+    // after a secret rotation on restart, or natural expiry) makes EVERY
+    // authenticated request return 500, and the FE never knows to send the
+    // user back to login. Surfacing 401 lets the auth interceptor redirect.
+    if (err?.name === "TokenExpiredError") {
+      throw new UnauthorizedError("Token expired. Please log in again.");
+    }
+    throw new UnauthorizedError("Invalid token. Please log in again.");
+  }
 };

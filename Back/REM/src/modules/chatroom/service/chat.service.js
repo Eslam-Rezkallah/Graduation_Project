@@ -584,6 +584,66 @@ export const createGroup = asyncHandler(async (req, res, next) => {
 // GET /chat/rooms  — UPDATED: embeds unread counts per room
 // ─────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────
+// GET /chat/rooms/browse — discover PUBLIC channels in the org the
+// caller has NOT joined yet (the "Browse channels" modal). Private
+// channels and rooms the user is already in are excluded.
+// ─────────────────────────────────────────────────────────────
+export const browseChannels = asyncHandler(async (req, res, next) => {
+  const userId = req.user._id;
+  const { organizationId, search } = req.query;
+
+  // Only members of the org may browse its channels.
+  await requireOrgMember(organizationId, userId);
+
+  const { page, limit, skip } = getPagination(req.query);
+
+  const filter = {
+    organizationId,
+    type: chatRoomTypes.channel,
+    isPrivate: false,
+    isDeleted: false,
+    members: { $ne: userId }, // hide channels the user already belongs to
+  };
+
+  if (search && search.trim()) {
+    // Escape regex metacharacters so a stray "." or "(" in the search
+    // box can't break the query or match unexpectedly.
+    const safe = search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const rx = { $regex: safe, $options: "i" };
+    filter.$or = [{ name: rx }, { description: rx }];
+  }
+
+  const [rooms, total] = await Promise.all([
+    chatRoomModel
+      .find(filter)
+      .select("name description icon branding type members createdBy createdAt")
+      .populate("createdBy", "username image")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    chatRoomModel.countDocuments(filter),
+  ]);
+
+  // Expose a member count (not the full member list) and an explicit
+  // isMember:false flag the FE can rely on when rendering the Join button.
+  const discoverable = rooms.map((r) => ({
+    ...r,
+    memberCount: Array.isArray(r.members) ? r.members.length : 0,
+    members: undefined,
+    isMember: false,
+  }));
+
+  return successResponse({
+    res,
+    data: { rooms: discoverable, total, page, limit },
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// GET /chat/rooms
+// ─────────────────────────────────────────────────────────────
 export const listChatRooms = asyncHandler(async (req, res, next) => {
   const userId = req.user._id;
   const { organizationId, type } = req.query;

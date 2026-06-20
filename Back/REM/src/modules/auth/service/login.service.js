@@ -202,7 +202,8 @@ export const login = asyncHandler(async (req, res, next) => {
     // attempts" from a one-off typo.
     const now = Date.now();
     const windowStart = user.loginFailedWindowStart?.getTime() || 0;
-    const windowActive = windowStart && now - windowStart < LOGIN_ATTEMPT_WINDOW_MS;
+    const windowActive =
+      windowStart && now - windowStart < LOGIN_ATTEMPT_WINDOW_MS;
 
     const nextCount = windowActive ? (user.loginFailedAttempts || 0) + 1 : 1;
     const update = {

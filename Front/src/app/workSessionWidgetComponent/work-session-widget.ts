@@ -1,6 +1,7 @@
 import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { WorkSessionService } from '../services/work-session.service';
+import { ToastService } from '../services/toast.service';
 
 @Component({
   selector: 'app-work-session-widget',
@@ -11,8 +12,22 @@ import { WorkSessionService } from '../services/work-session.service';
 })
 export class WorkSessionWidgetComponent {
   ws = inject(WorkSessionService);
+  private toast = inject(ToastService);
 
   isLoading = signal(false);
+
+  async onToggleCapture() {
+    const wasCapturing = this.ws.isCapturing();
+    await this.ws.toggleScreenCapture();
+    const err = this.ws.captureError();
+    if (!wasCapturing && err) {
+      this.toast.error(err);
+    } else if (!wasCapturing && this.ws.isCapturing()) {
+      this.toast.success('Screen capture started — uploading a snapshot every 30s.');
+    } else if (wasCapturing) {
+      this.toast.info('Screen capture stopped.');
+    }
+  }
 
   async onStart() {
     this.isLoading.set(true);

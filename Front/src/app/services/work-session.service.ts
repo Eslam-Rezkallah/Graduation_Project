@@ -44,6 +44,21 @@ export class WorkSessionService implements OnDestroy {
   isIdle = computed(() => this.session()?.isIdle ?? false);
   elapsedSeconds = signal(0);
 
+  // ── Screen capture (in-browser "desktop agent") ───────────────
+  // Uses the Screen Capture API (getDisplayMedia). The browser prompts
+  // the user ONCE to pick a screen/window, we hold that stream, then grab
+  // a JPEG frame on an interval and POST it to the SAME endpoint the
+  // native desktop agent uses: POST /work-session/:sessionId/screenshots.
+  isCapturing       = signal(false);
+  screenshotsSent   = signal(0);
+  screenshotsFailed = signal(0);
+  captureError      = signal<string | null>(null);
+
+  private captureStream: MediaStream | null = null;
+  private captureVideo: HTMLVideoElement | null = null;
+  private captureTimer: any = null;
+  private readonly captureIntervalMs = 30_000; // 30s cadence, like the agent
+
   formattedTime = computed(() => {
     const s = this.elapsedSeconds();
     const h = Math.floor(s / 3600);
@@ -110,6 +125,12 @@ export class WorkSessionService implements OnDestroy {
         this.startTimer();
         this.startActivityPing();
         this.listenToUserActivity();
+        // Auto-begin screen capture with the same click. Best-effort: the
+        // browser still shows its mandatory screen-picker, and if the user
+        // dismisses it the session keeps running (capture just stays off).
+        // The POST above is fast on localhost, so we're still inside the
+        // click's transient activation window that getDisplayMedia needs.
+        this.startScreenCapture();
       }
     } catch (e: any) {
       console.error('Start failed:', e?.error?.message ?? e);
@@ -169,6 +190,7 @@ export class WorkSessionService implements OnDestroy {
         this.stopTimer();
         this.stopActivityPing();
         this.removeActivityListeners();
+        this.stopScreenCapture(); // releases the shared screen on Stop
         setTimeout(() => {
           this.session.set(null);
           this.elapsedSeconds.set(0);
@@ -287,9 +309,135 @@ export class WorkSessionService implements OnDestroy {
     }
   }
 
+  // ── Screen capture control ────────────────────────────────────
+  async toggleScreenCapture(): Promise<void> {
+    if (this.isCapturing()) {
+      this.stopScreenCapture();
+    } else {
+      await this.startScreenCapture();
+    }
+  }
+
+  async startScreenCapture(): Promise<void> {
+    if (this.isCapturing()) return; // already running — don't re-prompt
+    this.captureError.set(null);
+
+    const sid = this.session()?._id;
+    if (!sid) {
+      this.captureError.set('Start a work session first.');
+      return;
+    }
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      this.captureError.set('Screen capture is not supported in this browser.');
+      return;
+    }
+
+    try {
+      // Prompt the user ONCE; keep the stream alive across captures.
+      this.captureStream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: 1 }, // ~1fps is plenty for periodic snapshots
+        audio: false,
+      });
+    } catch {
+      // User dismissed the picker or denied permission.
+      this.captureError.set('Screen share was cancelled.');
+      return;
+    }
+
+    // If the user hits the browser's native "Stop sharing" bar.
+    const track = this.captureStream.getVideoTracks()[0];
+    track?.addEventListener('ended', () => this.stopScreenCapture());
+
+    this.isCapturing.set(true);
+    this.screenshotsSent.set(0);
+    this.screenshotsFailed.set(0);
+
+    // Fire one immediately for fast feedback, then on the interval.
+    this.captureAndUpload();
+    this.captureTimer = setInterval(
+      () => this.captureAndUpload(),
+      this.captureIntervalMs,
+    );
+  }
+
+  stopScreenCapture(): void {
+    if (this.captureTimer) {
+      clearInterval(this.captureTimer);
+      this.captureTimer = null;
+    }
+    if (this.captureStream) {
+      this.captureStream.getTracks().forEach((t) => t.stop());
+      this.captureStream = null;
+    }
+    this.captureVideo = null;
+    this.isCapturing.set(false);
+  }
+
+  private async captureAndUpload(): Promise<void> {
+    const sid = this.session()?._id;
+    if (!sid || !this.captureStream) {
+      this.stopScreenCapture();
+      return;
+    }
+    try {
+      const dataUrl = await this.grabFrame();
+      await firstValueFrom(
+        this.http.post(`${BASE_URL}/${sid}/screenshots`, {
+          imageUrl: dataUrl,
+          capturedAt: new Date().toISOString(),
+        }),
+      );
+      this.screenshotsSent.update((n) => n + 1);
+    } catch (e: any) {
+      this.screenshotsFailed.update((n) => n + 1);
+      this.captureError.set(
+        e?.error?.message ?? e?.message ?? 'Screenshot upload failed',
+      );
+    }
+  }
+
+  /** Draw the current frame of the shared screen to a JPEG data-URI. */
+  private async grabFrame(): Promise<string> {
+    if (!this.captureStream) throw new Error('No active capture stream');
+
+    // A hidden <video> is more reliable than ImageCapture.grabFrame()
+    // across browsers, especially when the tab is backgrounded.
+    if (!this.captureVideo) {
+      const v = document.createElement('video');
+      v.srcObject = this.captureStream;
+      v.muted = true;
+      await v.play();
+      await new Promise((r) => setTimeout(r, 200)); // let first frame arrive
+      this.captureVideo = v;
+    }
+
+    const v = this.captureVideo;
+    const canvas = document.createElement('canvas');
+    canvas.width = v.videoWidth || 1280;
+    canvas.height = v.videoHeight || 720;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas not supported');
+    ctx.drawImage(v, 0, 0);
+
+    const blob: Blob = await new Promise((resolve, reject) =>
+      canvas.toBlob(
+        (b) => (b ? resolve(b) : reject(new Error('Frame encode failed'))),
+        'image/jpeg',
+        0.6,
+      ),
+    );
+
+    return await new Promise<string>((resolve) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(fr.result as string);
+      fr.readAsDataURL(blob);
+    });
+  }
+
   ngOnDestroy(): void {
     this.stopTimer();
     this.stopActivityPing();
     this.removeActivityListeners();
+    this.stopScreenCapture();
   }
 }

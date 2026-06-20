@@ -15,6 +15,15 @@ router.use(authentication());
 // GET /chat/rooms/unread-counts (MUST be before /:roomId to avoid conflict)
 router.get("/unread-counts", messageService.getUnreadCounts);
 
+// ── Discover public channels to join ──────────────────────────
+// GET /chat/rooms/browse (MUST be before /:roomId so "browse" isn't
+// parsed as a roomId).
+router.get(
+  "/browse",
+  validation(validators.browseChannels),
+  chatRoomService.browseChannels,
+);
+
 // ── Create ────────────────────────────────────────────────────
 router.post(
   "/direct",

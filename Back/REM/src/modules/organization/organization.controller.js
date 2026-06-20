@@ -21,6 +21,13 @@ const router = Router();
 // ORG CRUD
 // ─────────────────────────────────────────────────────────────
 
+// GET /org/me  — all orgs the logged-in user belongs to.
+// MUST be registered BEFORE "/:orgId" — otherwise Express matches "/me"
+// as ":orgId", and orgIdParam validation rejects "me" (not a valid
+// ObjectId) with a 400, which the FE mistakes for "user has no org" and
+// bounces a real member to the onboarding screen.
+router.get("/me", authentication(), orgService.getMyOrganizations);
+
 // GET /org/:orgId  — get org details + member count + current user role
 router.get(
   "/:orgId",
@@ -28,9 +35,6 @@ router.get(
   validation(validators.orgIdParam),
   orgService.getOrg
 );
-
-// GET /org/me  — all orgs the logged-in user belongs to
-router.get("/me", authentication(), orgService.getMyOrganizations);
 
 
 // POST /org  — create a new org

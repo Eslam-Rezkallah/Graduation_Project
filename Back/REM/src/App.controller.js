@@ -23,7 +23,10 @@ import meetingController from "./modules/meeting/meeting.controller.js";
 import channelTabController from "./modules/chatroom/channel-tab.controller.js";
 import screenshotController from "./modules/workSession/screenshot.controller.js";
 import activityEventController from "./modules/workSession/activity-event.controller.js";
+import workSessionAdminController from "./modules/workSession/admin.controller.js";
+import analyticsController from "./modules/workSession/analytics.controller.js";
 import dashboardController from "./modules/dashboard/dashboard.controller.js";
+import auditController from "./modules/audit/audit.controller.js";
 import { config } from "./config/index.js";
 import { generalLimiter, authLimiter } from "./utils/rate-limit/limiters.js";
 import connectDB from "./DB/connection.js";
@@ -253,11 +256,19 @@ const bootstrap = async (app, express) => {
   mountVersioned("/me/reminders", reminderController);
   mountVersioned("/meetings", meetingController);
   mountVersioned("/chat/rooms/:roomId/tabs", channelTabController);
+  // Admin monitoring + AI workforce analytics share the /work-session
+  // prefix. They MUST mount before screenshotController: their static
+  // "/admin/..." and "/analytics/..." paths would otherwise be swallowed
+  // by screenshotController's dynamic "/:sessionId/screenshots" route.
+  mountVersioned("/work-session", workSessionAdminController);
+  mountVersioned("/work-session", analyticsController);
   // Same /work-session prefix as the existing workSessionController so
   // screenshots and activity events sit naturally under their parent.
   mountVersioned("/work-session", screenshotController);
   mountVersioned("/work-session", activityEventController);
   mountVersioned("/dashboards", dashboardController);
+  // Audit log viewer — FE calls GET /audit-logs?orgId=...
+  mountVersioned("/audit-logs", auditController);
 
   // ─── Chat ───────────────────────────────────────────────────
   mountVersioned("/chat/rooms", chatRoomController);
