@@ -78,6 +78,13 @@ export class ReportsComponent implements OnInit {
   flowData = signal<any[]>([]);
   devopsSummary = signal<any>(null);
 
+  aiReportLoading = signal(false);
+  aiReportError = signal('');
+  aiReportEmployees = signal<string[]>([]);
+  aiReportTasks = signal<{ employee: string; task: string }[]>([]);
+  aiSprintPrediction = signal<any>(null);
+  aiBottlenecks = signal<any>(null);
+
   private get orgId(): string {
     return this.auth.currentUser()?.orgId ?? '';
   }
@@ -147,7 +154,7 @@ export class ReportsComponent implements OnInit {
     this.clearData();
 
     try {
-      const [r, bd, bu, cf, vel, dev, ct] = await Promise.allSettled([
+      const [r, bd, bu, cf, vel, dev, ct, aiPred, aiBn] = await Promise.allSettled([
         this.reportsService.getSprintReport(this.orgId, sid, spId),
         this.reportsService.getBurndown(this.orgId, sid, spId),
         this.reportsService.getBurnup(this.orgId, sid, spId),
@@ -155,6 +162,8 @@ export class ReportsComponent implements OnInit {
         this.reportsService.getVelocity(this.orgId, sid, 6),
         this.reportsService.getDevopsSummary(this.orgId, sid),
         this.reportsService.getCycleTime(this.orgId, sid),
+        this.reportsService.getAiSprintCompletion(this.orgId, sid, spId),
+        this.reportsService.getAiBottlenecks(this.orgId, sid, spId),
       ]);
 
       if (r.status === 'fulfilled') this.sprintReport.set(r.value?.data);
@@ -175,6 +184,10 @@ export class ReportsComponent implements OnInit {
           this.cycleAvgSig.set(Number(ctData.stats.avgDays.toFixed(1)));
         }
       }
+      if (aiPred.status === 'fulfilled') this.aiSprintPrediction.set(aiPred.value?.data ?? null);
+      if (aiBn.status === 'fulfilled') this.aiBottlenecks.set(aiBn.value?.data ?? null);
+
+      await this.loadAiReportData();
     } catch (e) {
       console.error('[Reports] loadReportData:', e);
     } finally {
@@ -190,7 +203,82 @@ export class ReportsComponent implements OnInit {
     this.flowData.set([]);
     this.devopsSummary.set(null);
     this.cycleData = [];
+    this.aiReportEmployees.set([]);
+    this.aiReportTasks.set([]);
+    this.aiReportError.set('');
+    this.aiSprintPrediction.set(null);
+    this.aiBottlenecks.set(null);
   }
+
+  async loadAiReportData() {
+    this.aiReportLoading.set(true);
+    this.aiReportError.set('');
+    try {
+      const [emp, tasks] = await Promise.allSettled([
+        this.reportsService.getAiReportEmployees(),
+        this.reportsService.getAiReportTasks(),
+      ]);
+      if (emp.status === 'fulfilled') {
+        this.aiReportEmployees.set(emp.value?.employees ?? []);
+      } else if (emp.reason?.status === 503) {
+        this.aiReportError.set('AI report service is not running.');
+      }
+      if (tasks.status === 'fulfilled') {
+        this.aiReportTasks.set(tasks.value?.results ?? []);
+      }
+    } catch {
+      this.aiReportError.set('Could not load AI report data.');
+    } finally {
+      this.aiReportLoading.set(false);
+    }
+  }
+
+  async rescanAiReports() {
+    this.aiReportLoading.set(true);
+    this.aiReportError.set('');
+    try {
+      await this.reportsService.rescanAiReports();
+      await this.loadAiReportData();
+    } catch (err: any) {
+      this.aiReportError.set(err?.error?.message || 'Rescan failed.');
+    } finally {
+      this.aiReportLoading.set(false);
+    }
+  }
+
+  assigneeName(task: any): string {
+    const a = task?.assigneeId;
+    if (!a) return 'Unassigned';
+    if (typeof a === 'object') {
+      return a.fullName || a.username || a.email?.split('@')[0] || 'Unknown';
+    }
+    return 'Unknown';
+  }
+
+  assigneeGroups = computed(() => {
+    const tasks = this.sprintReport()?.tasks ?? [];
+    const map = new Map<string, { name: string; tasks: any[] }>();
+    for (const t of tasks) {
+      const a = t.assigneeId;
+      const key =
+        typeof a === 'object' && a?._id ? String(a._id) : a ? String(a) : 'unassigned';
+      const name = this.assigneeName(t);
+      if (!map.has(key)) map.set(key, { name, tasks: [] });
+      map.get(key)!.tasks.push(t);
+    }
+    return Array.from(map.values()).sort((a, b) => b.tasks.length - a.tasks.length);
+  });
+
+  aiTasksByEmployee = computed(() => {
+    const map = new Map<string, string[]>();
+    for (const row of this.aiReportTasks()) {
+      if (!map.has(row.employee)) map.set(row.employee, []);
+      map.get(row.employee)!.push(row.task);
+    }
+    return Array.from(map.entries())
+      .map(([employee, tasks]) => ({ employee, tasks: [...new Set(tasks)] }))
+      .sort((a, b) => b.tasks.length - a.tasks.length);
+  });
 
   get sprintCompletionPct(): number {
     const r = this.sprintReport();

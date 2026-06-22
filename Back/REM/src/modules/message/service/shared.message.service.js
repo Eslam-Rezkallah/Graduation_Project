@@ -12,6 +12,8 @@
  * and the 30s TTL handles fallback consistency.
  */
 
+import fs from "node:fs/promises";
+import path from "node:path";
 import mongoose from "mongoose";
 import messageModel from "../../../DB/Model/message.model.js";
 import chatRoomModel from "../../../DB/Model/chatroom.model.js";
@@ -19,11 +21,17 @@ import reactionModel, {
   validReactions,
 } from "../../../DB/Model/reaction.model.js";
 import userModel from "../../../DB/Model/user.model.js";
-import { cloud } from "../../../utils/multer/cloudinary.multer.js";
+import { config } from "../../../config/index.js";
+import {
+  cloud,
+  isCloudinaryConfigured,
+} from "../../../utils/multer/cloudinary.multer.js";
 import * as dbService from "../../../DB/db.service.js";
 import { invalidate, ckey } from "../../../utils/cache/cache.service.js";
 import { childLogger } from "../../../utils/logger/logger.js";
 import { httpError } from "../../../utils/errors/index.js";
+import { queueVoiceAnalysis } from "../../../utils/ai/voice-analysis.service.js";
+import { isAiServiceConfigured } from "../../../utils/ai/ai.client.js";
 
 const log = childLogger("message-shared");
 
@@ -157,9 +165,64 @@ function getCloudFolder(userId, roomId) {
   return `${process.env.APP_NAME}/chat/${roomId}/${userId}`;
 }
 
+function attachmentExtension(file) {
+  const fromName = path.extname(file.originalname || "");
+  if (fromName) return fromName;
+  const map = {
+    "audio/webm": ".webm",
+    "audio/ogg": ".ogg",
+    "audio/mp4": ".m4a",
+    "audio/mpeg": ".mp3",
+    "audio/wav": ".wav",
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "video/mp4": ".mp4",
+  };
+  return map[file.mimetype] || "";
+}
+
+async function removeTempFile(filePath) {
+  if (!filePath) return;
+  try {
+    await fs.unlink(filePath);
+  } catch {
+    /* temp file may already be gone */
+  }
+}
+
+/** Dev fallback: persist under /uploads when Cloudinary is not configured. */
+async function uploadAttachmentLocal(file, userId, roomId) {
+  const relDir = path.join("uploads", "chat", String(roomId), String(userId));
+  const absDir = path.resolve("./src", relDir);
+  await fs.mkdir(absDir, { recursive: true });
+
+  const filename = `${Date.now()}-${Math.round(Math.random() * 1e9)}${attachmentExtension(file)}`;
+  const destPath = path.join(absDir, filename);
+  await fs.copyFile(file.path, destPath);
+  await removeTempFile(file.path);
+
+  const url = `http://localhost:${config.app.port}/uploads/chat/${roomId}/${userId}/${filename}`;
+
+  log.warn(
+    { url },
+    "Cloudinary not configured — saved attachment locally (dev only)",
+  );
+
+  return {
+    type: resolveAttachmentType(file.mimetype),
+    url,
+    public_id: null,
+    originalName: file.originalname,
+    mimeType: file.mimetype,
+    size: file.size,
+    duration: null,
+  };
+}
+
 export async function uploadAttachments(files, userId, roomId) {
   if (!files || !files.length) return [];
 
+  const useLocal = !isCloudinaryConfigured();
   const folder = getCloudFolder(userId, roomId);
   const resourceType = (mimetype) => {
     if (mimetype.startsWith("image/")) return "image";
@@ -170,19 +233,29 @@ export async function uploadAttachments(files, userId, roomId) {
 
   return Promise.all(
     files.map(async (file) => {
-      const result = await cloud.uploader.upload(file.path, {
-        folder,
-        resource_type: resourceType(file.mimetype),
-      });
-      return {
-        type: resolveAttachmentType(file.mimetype),
-        url: result.secure_url,
-        public_id: result.public_id,
-        originalName: file.originalname,
-        mimeType: file.mimetype,
-        size: file.size,
-        duration: result.duration || null,
-      };
+      if (useLocal) {
+        return uploadAttachmentLocal(file, userId, roomId);
+      }
+
+      try {
+        const result = await cloud.uploader.upload(file.path, {
+          folder,
+          resource_type: resourceType(file.mimetype),
+        });
+        await removeTempFile(file.path);
+        return {
+          type: resolveAttachmentType(file.mimetype),
+          url: result.secure_url,
+          public_id: result.public_id,
+          originalName: file.originalname,
+          mimeType: file.mimetype,
+          size: file.size,
+          duration: result.duration || null,
+        };
+      } catch (err) {
+        await removeTempFile(file.path);
+        throw err;
+      }
     }),
   );
 }
@@ -334,6 +407,16 @@ export async function createMessage({
       log.debug({ err: err.message }, "background unfurl failed");
     }
   })();
+
+  // Auto-analyze voice messages for AI Speech dashboard (async, non-blocking).
+  if (
+    isAiServiceConfigured("chat") &&
+    (resolvedType === "voice" || attachments.some((a) => a.type === "voice"))
+  ) {
+    queueVoiceAnalysis(message._id).catch((err) => {
+      log.debug({ err: err.message, messageId: message._id }, "voice analysis queue failed");
+    });
+  }
 
   // Fan out mention notifications. Like the comment_mention pattern,
   // we go through the central event bus so the socket transport

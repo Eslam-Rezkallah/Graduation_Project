@@ -116,6 +116,14 @@ const messageSchema = new Schema(
     deleted: { type: Boolean, default: false },
     deletedForEveryone: { type: Boolean, default: false },
     deletedFor: [{ type: Types.ObjectId, ref: "User" }],
+
+    // Cached AI voice analysis (Whisper + librosa) — filled async after send.
+    voiceAnalysisStatus: {
+      type: String,
+      enum: ["pending", "ready", "failed"],
+      default: null,
+    },
+    voiceAnalysis: { type: Schema.Types.Mixed, default: null },
   },
   { timestamps: true },
 );
@@ -133,6 +141,7 @@ messageSchema.index({ chatRoomId: 1, createdAt: -1 });
 messageSchema.index({ chatRoomId: 1, senderId: 1 });
 messageSchema.index({ senderId: 1, createdAt: -1 });
 messageSchema.index({ chatRoomId: 1, deletedForEveryone: 1, createdAt: -1 });
+messageSchema.index({ messageType: 1, createdAt: -1 });
 
 // Full-text search index on message content
 messageSchema.index({ content: "text" });

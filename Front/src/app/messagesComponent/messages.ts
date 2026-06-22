@@ -8,6 +8,7 @@ import { FormsModule } from '@angular/forms';
 import { AuthService, SOCKET_BASE } from '../services/auth.service';
 import {
   ChatService, Conversation, BackendMessage, MsgType,
+  ChatSummarizeResult,
 } from '../services/chat.service';
 import { CallService }   from '../services/call.service';
 import { SocketService } from '../services/socket.service';
@@ -102,6 +103,14 @@ export class MessagesComponent implements OnInit, OnDestroy, AfterViewChecked {
   msgSearchQuery  = signal('');
   searchResults   = signal<BackendMessage[]>([]);
   searching       = signal(false);
+
+  // AI summarize (in-room panel, not a separate page)
+  showSummarize         = signal(false);
+  summarizing           = signal(false);
+  summarizeResult       = signal<ChatSummarizeResult | null>(null);
+  summarizeWindow       = signal<'day' | 'week' | ''>('');
+  summarizeIncludeVoice = signal(true);
+  summarizeIncludeImage = signal(true);
 
   // Forward
   forwardingMsgId = signal<string | null>(null);
@@ -809,6 +818,36 @@ export class MessagesComponent implements OnInit, OnDestroy, AfterViewChecked {
     this.searching.set(false);
   }
   clearSearch() { this.showSearch.set(false); this.msgSearchQuery.set(''); this.searchResults.set([]); }
+
+  // ── AI summarize ─────────────────────────────────────────
+  toggleSummarizePanel() {
+    const next = !this.showSummarize();
+    this.showSummarize.set(next);
+    if (!next) {
+      this.summarizeResult.set(null);
+    }
+  }
+
+  async runSummarize() {
+    const room = this.selectedRoom();
+    if (!room) return;
+
+    this.summarizing.set(true);
+    this.summarizeResult.set(null);
+    try {
+      const window = this.summarizeWindow();
+      const result = await this.chatService.summarizeRoom(room._id, {
+        ...(window ? { window } : {}),
+        includeVoiceAnalysis: this.summarizeIncludeVoice(),
+        includeImageOcr: this.summarizeIncludeImage(),
+      });
+      this.summarizeResult.set(result);
+    } catch (err: any) {
+      this.toast.error(err?.error?.message || 'Failed to summarize chat');
+    } finally {
+      this.summarizing.set(false);
+    }
+  }
 
   // ── Forward ─────────────────────────────────────────────
   async doForward() {

@@ -44,6 +44,61 @@ export interface Conversation {
   organizationId?: string;
 }
 
+export interface ChatSummarizeOptions {
+  window?: 'day' | 'week';
+  limit?: number;
+  maxSummaryLength?: number;
+  minSummaryLength?: number;
+  includeVoiceAnalysis?: boolean;
+  includeImageOcr?: boolean;
+}
+
+export interface ChatVoiceEmotion {
+  label: string;
+  confidence: string | number;
+  verdict?: string;
+}
+
+export interface ChatVoiceAnalysis {
+  user?: string;
+  transcript?: string;
+  translated_transcript?: string;
+  emotion?: ChatVoiceEmotion;
+}
+
+export interface ChatImageOcr {
+  user?: string;
+  text?: string;
+  app?: string;
+  category?: string;
+}
+
+export interface ChatSummarizeChannel {
+  channel: string;
+  messageCount: number;
+  summary: string;
+  voiceAnalyses: ChatVoiceAnalysis[];
+  imageOcr: ChatImageOcr[];
+}
+
+export interface ChatSummarizeResult {
+  roomId: string;
+  messageCount: number;
+  sinceUtc: string | null;
+  nowUtc: string | null;
+  overallSummary: string;
+  channels: ChatSummarizeChannel[];
+  voiceAnalyses: ChatVoiceAnalysis[];
+  imageOcr: ChatImageOcr[];
+}
+
+/** Wrapper returned by POST /chat/rooms/:roomId/messages/ai/summarize */
+export interface ChatSummarizeApiResponse {
+  success: boolean;
+  message: string;
+  data: ChatSummarizeResult;
+}
+
 @Injectable({ providedIn: 'root' })
 export class ChatService {
   private http = inject(HttpClient);
@@ -199,6 +254,27 @@ export class ChatService {
     } catch {
       return [];
     }
+  }
+
+  /**
+   * AI summary for a room's recent messages.
+   * POST /chat/rooms/:roomId/messages/ai/summarize
+   *
+   * Request body (all optional):
+   *   window, limit, maxSummaryLength, minSummaryLength,
+   *   includeVoiceAnalysis, includeImageOcr
+   */
+  async summarizeRoom(
+    roomId: string,
+    options: ChatSummarizeOptions = {},
+  ): Promise<ChatSummarizeResult> {
+    const res = await firstValueFrom(
+      this.http.post<ChatSummarizeApiResponse>(
+        `${BASE}/chat/rooms/${roomId}/messages/ai/summarize`,
+        options,
+      ),
+    );
+    return res.data;
   }
 
   async sendMessage(

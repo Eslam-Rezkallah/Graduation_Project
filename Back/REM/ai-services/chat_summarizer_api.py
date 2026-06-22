@@ -4,7 +4,7 @@ import json
 import os
 import re
 import tempfile
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
@@ -446,6 +446,22 @@ class TranslateResponse(BaseModel):
     translated: str
 
 
+class VoiceAnalyzeRequest(BaseModel):
+    audio_url: str = Field(..., min_length=1)
+    user: str = Field(default="User")
+
+
+class VoiceAnalyzeResponse(BaseModel):
+    user: str
+    ts: str
+    audio_url: str
+    language: str
+    transcript: str
+    translated_transcript: str
+    features: Dict[str, Any]
+    emotion: Optional[Dict[str, Any]] = None
+
+
 def _rows_from_request(req: SummarizeRequest) -> List[Dict[str, Any]]:
     rows: List[Dict[str, Any]] = []
     if req.messages:
@@ -517,6 +533,16 @@ def healthz() -> Dict[str, str]:
 def translate_endpoint(req: TranslateRequest) -> TranslateResponse:
     translated = translate_batch([req.text])[0]
     return TranslateResponse(original=req.text, translated=translated)
+
+
+@app.post("/analyze-voice", response_model=VoiceAnalyzeResponse)
+def analyze_voice_endpoint(req: VoiceAnalyzeRequest) -> VoiceAnalyzeResponse:
+    result = analyze_voice_message(
+        req.audio_url,
+        req.user,
+        datetime.now(timezone.utc).isoformat(),
+    )
+    return VoiceAnalyzeResponse(**result)
 
 
 @app.post("/summarize", response_model=SummarizeResponse)

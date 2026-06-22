@@ -241,6 +241,116 @@
           </div>
         </div>
       </div>
+
+      <!-- Employees working on sprint tasks -->
+      @if (assigneeGroups().length) {
+        <div class="panel rpt-emp-panel">
+          <div class="panel-header">
+            <h3 class="panel-title">Employees on Tasks</h3>
+            <span class="panel-sub">{{ assigneeGroups().length }} assignees · current sprint</span>
+          </div>
+          <div class="rpt-emp-grid">
+            @for (g of assigneeGroups(); track g.name) {
+              <div class="rpt-emp-card">
+                <div class="rpt-emp-head">
+                  <strong>{{ g.name }}</strong>
+                  <span class="rpt-emp-count">{{ g.tasks.length }} task{{ g.tasks.length === 1 ? '' : 's' }}</span>
+                </div>
+                <ul class="rpt-emp-tasks">
+                  @for (t of g.tasks.slice(0, 5); track t._id) {
+                    <li>{{ t.title }} <span class="rpt-emp-status">{{ t.status }}</span></li>
+                  }
+                  @if (g.tasks.length > 5) {
+                    <li class="rpt-emp-more">+{{ g.tasks.length - 5 }} more</li>
+                  }
+                </ul>
+              </div>
+            }
+          </div>
+        </div>
+      }
+
+      <!-- AI sprint prediction & bottlenecks -->
+      @if (aiSprintPrediction()?.prediction; as pred) {
+        <div class="panel rpt-emp-panel">
+          <div class="panel-header">
+            <h3 class="panel-title">AI Sprint Completion Forecast</h3>
+            <span class="panel-sub" [class]="'rpt-risk-' + pred.riskLevel">{{ pred.riskLevel }} risk</span>
+          </div>
+          <div class="rpt-ai-metrics">
+            <div class="rpt-ai-metric">
+              <span class="rpt-ai-val">{{ pred.predictedCompletionPercent }}%</span>
+              <span class="rpt-ai-lbl">Predicted completion</span>
+            </div>
+            <div class="rpt-ai-metric">
+              <span class="rpt-ai-val">{{ pred.currentCompletionPercent }}%</span>
+              <span class="rpt-ai-lbl">Current completion</span>
+            </div>
+            <div class="rpt-ai-metric">
+              <span class="rpt-ai-val">{{ pred.onTrack ? 'Yes' : 'No' }}</span>
+              <span class="rpt-ai-lbl">On track</span>
+            </div>
+          </div>
+          @if (pred.reasons?.length) {
+            <p class="rpt-ai-note">{{ pred.reasons.join(' · ') }}</p>
+          }
+        </div>
+      }
+
+      @if (aiBottlenecks()?.bottlenecks?.length) {
+        <div class="panel rpt-emp-panel">
+          <div class="panel-header">
+            <h3 class="panel-title">AI Bottleneck Detection</h3>
+            <span class="panel-sub">{{ aiBottlenecks().bottlenecks.length }} issues found</span>
+          </div>
+          <ul class="rpt-bottleneck-list">
+            @for (b of aiBottlenecks().bottlenecks.slice(0, 8); track $index) {
+              <li>
+                <strong>{{ b.message }}</strong>
+                <span class="rpt-emp-status">{{ b.type }} · {{ b.severity }}</span>
+              </li>
+            }
+          </ul>
+        </div>
+      }
+
+      <!-- AI report intelligence (from uploaded report files) -->
+      <div class="panel rpt-emp-panel">
+        <div class="panel-header">
+          <h3 class="panel-title">AI Report — Employee Tasks</h3>
+          <button type="button" class="rpt-rescan-btn" [disabled]="aiReportLoading()" (click)="rescanAiReports()">
+            {{ aiReportLoading() ? 'Scanning…' : 'Rescan files' }}
+          </button>
+        </div>
+        @if (aiReportError()) {
+          <p class="rpt-ai-note rpt-ai-warn">{{ aiReportError() }}</p>
+        }
+        @if (aiTasksByEmployee().length) {
+          <div class="rpt-emp-grid">
+            @for (g of aiTasksByEmployee(); track g.employee) {
+              <div class="rpt-emp-card">
+                <div class="rpt-emp-head">
+                  <strong>{{ g.employee }}</strong>
+                  <span class="rpt-emp-count">{{ g.tasks.length }} task{{ g.tasks.length === 1 ? '' : 's' }}</span>
+                </div>
+                <ul class="rpt-emp-tasks">
+                  @for (task of g.tasks.slice(0, 5); track task) {
+                    <li>{{ task }}</li>
+                  }
+                  @if (g.tasks.length > 5) {
+                    <li class="rpt-emp-more">+{{ g.tasks.length - 5 }} more</li>
+                  }
+                </ul>
+              </div>
+            }
+          </div>
+        } @else if (!aiReportLoading() && !aiReportError()) {
+          <p class="rpt-ai-note">
+            No employee tasks extracted from uploaded report files yet.
+            Upload PDF/DOCX/PPTX reports to the platform, then click <strong>Rescan files</strong>.
+          </p>
+        }
+      </div>
     }
   }
 
@@ -328,11 +438,12 @@
         <div class="panel">
           <div class="panel-header"><h3 class="panel-title">Tasks in Sprint</h3><span class="panel-sub">{{ sprintReport().tasks?.length }} tasks</span></div>
           <table class="data-table">
-            <thead><tr><th>Title</th><th>Type</th><th>Priority</th><th>Status</th></tr></thead>
+            <thead><tr><th>Title</th><th>Assignee</th><th>Type</th><th>Priority</th><th>Status</th></tr></thead>
             <tbody>
               @for (task of sprintReport().tasks?.slice(0,15); track task._id) {
                 <tr>
                   <td class="rpt-td-title">{{ task.title }}</td>
+                  <td>{{ assigneeName(task) }}</td>
                   <td class="rpt-td-type">{{ task.type }}</td>
                   <td><span class="badge" [class.p-high]="task.priority === 'High' || task.priority === 'Urgent'" [class.p-med]="task.priority === 'Medium'" [class.p-low]="task.priority === 'Low'">{{ task.priority }}</span></td>
                   <td><span class="badge" [class.s-done]="task.status === 'Done'" [class.s-progress]="task.status === 'InProgress'" [class.s-todo]="task.status === 'Todo'">{{ task.status }}</span></td>

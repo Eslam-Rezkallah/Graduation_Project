@@ -16,6 +16,7 @@ import { getPagination } from "../../../utils/db/pagination.js";
 import { getChatNamespace } from "../../socket/socket.controller.js";
 import { httpError } from "../../../utils/errors/index.js";
 import { callAiService } from "../../../utils/ai/ai.client.js";
+import { mapChatSummarizeResponse } from "../../../utils/ai/chat-summarize.mapper.js";
 
 // ── Shared service ────────────────────────────────────────────
 import {
@@ -308,7 +309,7 @@ export const summarizeMessages = asyncHandler(async (req, res) => {
     throw httpError(400, "No text, image, or voice content found to summarize");
   }
 
-  const summary = await callAiService("chat", "POST", "/summarize", {
+  const aiResult = await callAiService("chat", "POST", "/summarize", {
     data: {
       messages: aiMessages,
       channel,
@@ -322,10 +323,11 @@ export const summarizeMessages = asyncHandler(async (req, res) => {
 
   return successResponse({
     res,
+    message: "Chat summarized",
     data: {
       roomId,
       messageCount: aiMessages.length,
-      summary,
+      ...mapChatSummarizeResponse(aiResult),
     },
   });
 });
