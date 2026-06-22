@@ -73,16 +73,45 @@ export class ReportsService {
   }
 
   // ── AI: Sprint Completion Prediction ────────────────────
-  async getAiSprintCompletion(orgId: string, spaceId: string): Promise<any> {
+  async getAiSprintCompletion(orgId: string, spaceId: string, sprintId: string): Promise<any> {
     return firstValueFrom(
-      this.http.get(`${BASE}/org/${orgId}/spaces/${spaceId}/metrics/ai/sprint-completion`)
+      this.http.get(`${BASE}/org/${orgId}/spaces/${spaceId}/metrics/ai/sprint-completion`, {
+        params: { sprintId },
+      }),
     );
   }
 
   // ── AI: Bottleneck Detection ────────────────────────────
-  async getAiBottlenecks(orgId: string, spaceId: string): Promise<any> {
+  async getAiBottlenecks(orgId: string, spaceId: string, sprintId?: string): Promise<any> {
     return firstValueFrom(
-      this.http.get(`${BASE}/org/${orgId}/spaces/${spaceId}/metrics/ai/bottlenecks`)
+      this.http.get(`${BASE}/org/${orgId}/spaces/${spaceId}/metrics/ai/bottlenecks`, {
+        params: sprintId ? { sprintId } : {},
+      }),
     );
+  }
+
+  // ── AI Report intelligence (employee ↔ task from uploaded files) ──
+  async getAiReportEmployees(): Promise<{ count: number; employees: string[] }> {
+    const res = await firstValueFrom(
+      this.http.get<{ data: { count: number; employees: string[] } }>(`${BASE}/ai/reports/employees`),
+    );
+    return res.data;
+  }
+
+  async getAiReportTasks(query?: string): Promise<{ count: number; results: { employee: string; task: string }[] }> {
+    const res = await firstValueFrom(
+      this.http.get<{ data: { count: number; results: { employee: string; task: string }[] } }>(
+        `${BASE}/ai/reports/tasks`,
+        query ? { params: { q: query } } : {},
+      ),
+    );
+    return res.data;
+  }
+
+  async rescanAiReports(): Promise<any> {
+    const res = await firstValueFrom(
+      this.http.post<{ data: any }>(`${BASE}/ai/reports/rescan`, {}),
+    );
+    return res.data;
   }
 }

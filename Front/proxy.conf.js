@@ -24,5 +24,6 @@ module.exports = {
   '/dashboards':   { ...base },
   '/teams':        { ...base },
   '/meetings':     { ...base },
+  '/ai':           { ...base },
   '/socket.io':    { ...base, ws: true },
 };

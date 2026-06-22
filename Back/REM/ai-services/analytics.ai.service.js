@@ -6,9 +6,19 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const SCRIPT_PATH = path.join(__dirname, "analytics_ai_service.py");
 
+function resolvePythonBin() {
+  const configured = process.env.AI_PYTHON_PATH;
+  if (configured) {
+    return path.isAbsolute(configured)
+      ? configured
+      : path.join(process.cwd(), configured);
+  }
+  return "python3";
+}
+
 function runPython(command, payload) {
   return new Promise((resolve) => {
-    const py = spawn("python", [SCRIPT_PATH, command], {
+    const py = spawn(resolvePythonBin(), [SCRIPT_PATH, command], {
       stdio: ["pipe", "pipe", "pipe"],
       env: {
         ...process.env,

@@ -1,21 +1,77 @@
 <div class="ai-speech">
-  <!-- ── Header ─────────────────────────────────────────────── -->
   <header class="page-head">
     <div>
       <h1>AI Speech Analysis</h1>
-      <p class="subtitle">Acoustic emotion &amp; productivity insights · demo dataset</p>
+      <p class="subtitle">Automatic voice analysis from Messages · live workforce data</p>
     </div>
-    <span class="demo-badge">Static Demo</span>
   </header>
 
-  <!-- ── 1 + 2. Transcript / Translation ────────────────────── -->
+  <!-- ── Auto-loaded voice messages ─────────────────────────── -->
+  <section class="voice-feed glass fade-in">
+    @if (voiceLoading()) {
+      <p class="status-line">Loading voice messages…</p>
+    } @else if (!recentVoice().length) {
+      <p class="status-line">
+        No voice messages yet. Record one in <strong>Messages</strong> (🎤) — analysis starts automatically.
+      </p>
+    } @else {
+      <div class="feed-head">
+        <h2>Recent voice messages</h2>
+        @if (voiceAnalyzing()) {
+          <span class="analyzing-pill">Analyzing…</span>
+        }
+      </div>
+      <div class="voice-picker">
+        @for (v of recentVoice(); track v.messageId) {
+          <button
+            type="button"
+            class="voice-chip"
+            [class.active]="selectedMessageId() === v.messageId"
+            [class.pending]="v.status === 'pending'"
+            [class.failed]="v.status === 'failed'"
+            (click)="onPickVoice(v.messageId)"
+          >
+            <span class="chip-sender">{{ v.senderName }}</span>
+            <span class="chip-room"># {{ v.roomName }}</span>
+            <span class="chip-time">{{ formatMessageDate(v.createdAt) }}</span>
+            @if (v.status === 'pending') {
+              <span class="chip-badge">⏳</span>
+            } @else if (v.status === 'ready' && v.analysis?.emotion?.label) {
+              <span class="chip-badge">{{ v.analysis!.emotion!.label }}</span>
+            }
+          </button>
+        }
+      </div>
+      @if (selectedMeta()) {
+        <p class="selected-meta">
+          Showing: <strong>{{ selectedMeta()!.senderName }}</strong> in
+          <strong>{{ selectedMeta()!.roomName }}</strong> · {{ formatMessageDate(selectedMeta()!.createdAt) }}
+        </p>
+      }
+    }
+    @if (voiceError() && !voiceAnalyzing()) {
+      <p class="voice-error">{{ voiceError() }}</p>
+    }
+  </section>
+
+  @if (workforceError()) {
+    <p class="load-error">{{ workforceError() }}</p>
+  }
+
+  @if (voiceAnalyzing() && !hasVoiceAnalysis()) {
+    <section class="empty-voice glass fade-in">
+      <p>Running Whisper + acoustic analysis on the latest voice message… This can take 1–3 minutes on first run.</p>
+    </section>
+  }
+
+  @if (hasVoiceAnalysis()) {
   <section class="grid-2 fade-in">
     <div class="panel glass">
       <div class="panel-head">
         <span class="icon-chip chip-blue">abc</span>
         <h2>Original Transcript</h2>
       </div>
-      <p class="meta">Detected language: <code>{{ detectedLanguage }}</code></p>
+      <p class="meta">Detected language: <code>{{ detectedLanguage() }}</code></p>
       <div class="text-box rtl">{{ transcriptAr() }}</div>
     </div>
 
@@ -24,31 +80,29 @@
         <span class="icon-chip chip-cyan">🌐</span>
         <h2>English Translation</h2>
       </div>
-      <p class="meta">Translated by {{ translationEngine }}</p>
+      <p class="meta">Translated by {{ translationEngine() }}</p>
       <div class="text-box">{{ translationEn() }}</div>
     </div>
   </section>
 
-  <!-- ── 3. Acoustic conclusion ─────────────────────────────── -->
   <section class="conclusion glass fade-in">
     <div class="conclusion-top">
-      <span class="emoji-xl">{{ conclusion.emoji }}</span>
+      <span class="emoji-xl">{{ conclusion().emoji }}</span>
       <div>
         <p class="kicker">📋 Acoustic Conclusion</p>
-        <h2 class="emotion">{{ conclusion.emotion }}</h2>
+        <h2 class="emotion">{{ conclusion().emotion }}</h2>
         <p class="confidence">
-          Confidence: <strong [class.low]="conclusion.confidence === 'Low'">{{ conclusion.confidence }}</strong>
+          Confidence: <strong [class.low]="conclusion().confidence === 'Low'">{{ conclusion().confidence }}</strong>
         </p>
       </div>
     </div>
     <hr />
-    <p class="conclusion-desc">{{ conclusion.description }}</p>
-    <p class="conclusion-basis">Based on: {{ conclusion.basis }}</p>
+    <p class="conclusion-desc">{{ conclusion().description }}</p>
+    <p class="conclusion-basis">Based on: {{ conclusion().basis }}</p>
   </section>
 
-  <!-- ── 4. Metric cards ────────────────────────────────────── -->
   <p class="audio-meta">
-    Audio duration: {{ audioDuration }} · All features extracted acoustically via librosa
+    Audio duration: {{ audioDuration() }} · All features extracted acoustically via librosa
   </p>
 
   <section class="metric-grid">
@@ -74,17 +128,16 @@
       </div>
     </article>
 
-    <!-- 5. Pitch contour panel -->
     <article class="metric-card pitch-panel glass fade-in">
       <header class="metric-head">
         <span class="metric-title">📈 Pitch Contour</span>
       </header>
       <div class="pitch-icon">↕</div>
-      <h3 class="pitch-type">{{ pitchContour.type }} ↕</h3>
-      <p class="pitch-note">{{ pitchContour.note }}</p>
+      <h3 class="pitch-type">{{ pitchContour().type }} ↕</h3>
+      <p class="pitch-note">{{ pitchContour().note }}</p>
       <div class="pitch-detail">
-        <span>Pitch range: {{ pitchContour.range }} · Spread: {{ pitchContour.spread }}</span>
-        <span>Jitter: {{ pitchContour.jitter }} · Shimmer: {{ pitchContour.shimmer }}</span>
+        <span>Pitch range: {{ pitchContour().range }} · Spread: {{ pitchContour().spread }}</span>
+        <span>Jitter: {{ pitchContour().jitter }} · Shimmer: {{ pitchContour().shimmer }}</span>
       </div>
       <svg class="contour-svg" viewBox="0 0 300 60" preserveAspectRatio="none">
         <polyline
@@ -96,11 +149,11 @@
       </svg>
     </article>
   </section>
+  }
 
-  <!-- ── 6. Productivity analytics ──────────────────────────── -->
   <section class="section-head">
     <h2>Productivity Analytics</h2>
-    <span class="avg-pill">Avg productivity: {{ averageProductivity }}%</span>
+    <span class="avg-pill">Avg productivity: {{ averageProductivity() }}%</span>
   </section>
 
   <section class="grid-2 fade-in">
@@ -121,13 +174,13 @@
             [attr.stroke-dashoffset]="s.offset"
             transform="rotate(-90 20 20)"
           />
-          <text x="20" y="21" class="donut-center">{{ teamBreakdown.productivePct }}%</text>
+          <text x="20" y="21" class="donut-center">{{ teamBreakdown().productivePct }}%</text>
         </svg>
         <ul class="legend">
-          <li><span class="dot" [style.background]="catColors['productive']"></span>Productive · {{ teamBreakdown.productivePct }}%</li>
-          <li><span class="dot" [style.background]="catColors['neutral']"></span>Neutral · {{ teamBreakdown.neutralPct }}%</li>
-          <li><span class="dot" [style.background]="catColors['distracting']"></span>Distracting · {{ teamBreakdown.distractingPct }}%</li>
-          <li><span class="dot" [style.background]="catColors['idle']"></span>Idle · {{ teamBreakdown.idlePct }}%</li>
+          <li><span class="dot" [style.background]="catColors['productive']"></span>Productive · {{ teamBreakdown().productivePct }}%</li>
+          <li><span class="dot" [style.background]="catColors['neutral']"></span>Neutral · {{ teamBreakdown().neutralPct }}%</li>
+          <li><span class="dot" [style.background]="catColors['distracting']"></span>Distracting · {{ teamBreakdown().distractingPct }}%</li>
+          <li><span class="dot" [style.background]="catColors['idle']"></span>Idle · {{ teamBreakdown().idlePct }}%</li>
         </ul>
       </div>
     </div>
@@ -150,9 +203,13 @@
     </div>
   </section>
 
-  <!-- ── 7. Team overview ───────────────────────────────────── -->
   <section class="section-head"><h2>Team Overview</h2></section>
 
+  @if (workforceLoading()) {
+    <p class="load-error">Loading workforce data…</p>
+  } @else if (!employees().length) {
+    <p class="load-error">No tracked employees yet. Start work sessions with the desktop agent.</p>
+  } @else {
   <section class="team-grid">
     <article class="employee-card glass fade-in" *ngFor="let e of employees(); let i = index"
              [style.animation-delay.ms]="i * 70">
@@ -178,4 +235,5 @@
       </div>
     </article>
   </section>
+  }
 </div>

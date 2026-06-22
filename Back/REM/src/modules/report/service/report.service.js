@@ -58,7 +58,8 @@ export const sprintReport = asyncHandler(async (req, res, next) => {
 
   // ✅ Phase 9: projection + lean
   const tasks = await Task.find(filter)
-    .select("title status priority assigneeId reporterId points createdAt updatedAt dueDate")
+    .select("title status priority type assigneeId reporterId points createdAt updatedAt dueDate")
+    .populate("assigneeId", "username fullName email")
     .lean();
 
   const total = tasks.length;

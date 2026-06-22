@@ -24,7 +24,12 @@ export function listAiServices() {
   }));
 }
 
-export async function callAiService(service, method, path, { data, params } = {}) {
+export async function callAiService(
+  service,
+  method,
+  path,
+  { data, params, timeoutMs } = {},
+) {
   const baseUrl = SERVICE_URLS[service];
   if (!baseUrl) {
     throw httpError(503, `AI ${service} service is not configured`);
@@ -36,7 +41,7 @@ export async function callAiService(service, method, path, { data, params } = {}
       url: `${trimTrailingSlash(baseUrl)}${path}`,
       data,
       params,
-      timeout: config.ai.serviceTimeoutMs,
+      timeout: timeoutMs ?? config.ai.serviceTimeoutMs,
     });
     return response.data;
   } catch (err) {

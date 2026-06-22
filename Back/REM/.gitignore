@@ -93,3 +93,5 @@ src/uploads/*
 *.metadata
 *.incomplete
 *.lock
+ai-services/models/models--*/
+ai-services/models/.locks/

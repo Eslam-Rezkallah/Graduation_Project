@@ -116,6 +116,12 @@
               <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/>
             </svg>
           </button>
+          <!-- AI summarize -->
+          <button type="button" class="chat-action-btn" title="AI summarize"
+                  [class.chat-btn-active]="showSummarize()"
+                  (click)="toggleSummarizePanel()">
+            ✨
+          </button>
           <!-- Pinned messages -->
           @if (pinnedMessages().length > 0) {
             <button type="button" class="chat-action-btn" title="Pinned messages"
@@ -258,6 +264,130 @@
           }
           @if (!searching() && msgSearchQuery().trim() && searchResults().length === 0) {
             <div class="mc-no-results">No results found.</div>
+          }
+        </div>
+      }
+
+      <!-- AI summarize panel -->
+      @if (showSummarize()) {
+        <div class="mc-panel ai-summarize-panel">
+          <div class="mc-panel-head">
+            <span class="mc-panel-title">✨ AI Chat Summary</span>
+            <button type="button" class="btn-ghost mc-panel-close" (click)="toggleSummarizePanel()">✕</button>
+          </div>
+
+          <div class="ai-summarize-controls">
+            <label class="ai-summarize-field">
+              <span>Window</span>
+              <select [ngModel]="summarizeWindow()" (ngModelChange)="summarizeWindow.set($event)">
+                <option value="">All recent</option>
+                <option value="day">Last 24 hours</option>
+                <option value="week">Last 7 days</option>
+              </select>
+            </label>
+            <label class="ai-summarize-check">
+              <input type="checkbox" [ngModel]="summarizeIncludeVoice()"
+                     (ngModelChange)="summarizeIncludeVoice.set($event)"/>
+              Voice analysis
+            </label>
+            <label class="ai-summarize-check">
+              <input type="checkbox" [ngModel]="summarizeIncludeImage()"
+                     (ngModelChange)="summarizeIncludeImage.set($event)"/>
+              Image OCR
+            </label>
+            <button type="button" class="btn-primary mc-btn-sm"
+                    [disabled]="summarizing()" (click)="runSummarize()">
+              {{ summarizing() ? 'Summarizing…' : 'Summarize' }}
+            </button>
+          </div>
+
+          @if (summarizeResult(); as result) {
+            <div class="ai-summarize-results">
+              <div class="ai-summarize-meta">
+                {{ result.messageCount }} messages summarized
+                @if (result.sinceUtc && result.nowUtc) {
+                  · {{ result.sinceUtc | date:'short' }} – {{ result.nowUtc | date:'short' }}
+                }
+              </div>
+
+              <section class="ai-summarize-block">
+                <h4>Overall</h4>
+                <p>{{ result.overallSummary }}</p>
+              </section>
+
+              @for (ch of result.channels; track ch.channel) {
+                <section class="ai-summarize-block">
+                  <h4>{{ ch.channel }} <span class="ai-summarize-count">({{ ch.messageCount }})</span></h4>
+                  <p>{{ ch.summary }}</p>
+
+                  @for (v of ch.voiceAnalyses; track $index) {
+                    <div class="ai-summarize-subitem">
+                      <strong>{{ v.user }}</strong>
+                      @if (v.translated_transcript || v.transcript) {
+                        <p>{{ v.translated_transcript || v.transcript }}</p>
+                      }
+                      @if (v.emotion) {
+                        <span class="ai-summarize-tag">
+                          {{ v.emotion.label }} ({{ v.emotion.confidence }})
+                        </span>
+                      }
+                    </div>
+                  }
+
+                  @for (img of ch.imageOcr; track $index) {
+                    <div class="ai-summarize-subitem">
+                      <strong>{{ img.user }}</strong>
+                      @if (img.text) {
+                        <p>{{ img.text }}</p>
+                      }
+                      @if (img.app || img.category) {
+                        <span class="ai-summarize-tag">
+                          {{ img.app || 'Unknown app' }} · {{ img.category || 'general' }}
+                        </span>
+                      }
+                    </div>
+                  }
+                </section>
+              }
+
+              @if (result.voiceAnalyses.length > 0) {
+                <section class="ai-summarize-block">
+                  <h4>Voice messages</h4>
+                  @for (v of result.voiceAnalyses; track $index) {
+                    <div class="ai-summarize-subitem">
+                      <strong>{{ v.user }}</strong>
+                      @if (v.translated_transcript || v.transcript) {
+                        <p>{{ v.translated_transcript || v.transcript }}</p>
+                      }
+                      @if (v.emotion) {
+                        <span class="ai-summarize-tag">
+                          {{ v.emotion.label }} ({{ v.emotion.confidence }})
+                        </span>
+                      }
+                    </div>
+                  }
+                </section>
+              }
+
+              @if (result.imageOcr.length > 0) {
+                <section class="ai-summarize-block">
+                  <h4>Image attachments</h4>
+                  @for (img of result.imageOcr; track $index) {
+                    <div class="ai-summarize-subitem">
+                      <strong>{{ img.user }}</strong>
+                      @if (img.text) {
+                        <p>{{ img.text }}</p>
+                      }
+                      @if (img.app || img.category) {
+                        <span class="ai-summarize-tag">
+                          {{ img.app || 'Unknown app' }} · {{ img.category || 'general' }}
+                        </span>
+                      }
+                    </div>
+                  }
+                </section>
+              }
+            </div>
           }
         </div>
       }

@@ -2,7 +2,7 @@ import json
 import math
 import sys
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 
 def parse_date(value):
@@ -265,5 +265,4 @@ def main():
 
 
 if __name__ == "__main__":
-    from datetime import timedelta
     main()
